@@ -2,8 +2,106 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[ExecuteInEditMode]
+[RequireComponent(typeof(MeshFilter))]
+[RequireComponent(typeof(MeshRenderer))]
 public class MarchingCubes : MonoBehaviour
 {
+	//Properties
+	private MeshFilter meshFilter;
+
+	private List<Vector3> vertices = new List<Vector3>();
+	private List<int> triangles = new List<int>();
+
+	private int configurationIndex = -1;
+
+	private void Start()
+	{
+		//Gets the mesh filter component
+		meshFilter = GetComponent<MeshFilter>();
+	}
+
+	private void OnValidate()
+	{
+		//Gets the mesh filter component
+		meshFilter = GetComponent<MeshFilter>();
+	}
+
+	private void Update()
+	{
+		if (Input.GetKeyDown(KeyCode.Space))
+		{
+			configurationIndex++;
+			ClearMeshData();
+			MarchCubes(Vector3.zero, configurationIndex);
+			CreateMesh();
+		}
+	}
+
+	private void MarchCubes(Vector3 _position, int _configurationIndex)
+	{
+		//If the configuration of the cube is either inside or outside the terrain, don't do anything
+		if (_configurationIndex == 0 || _configurationIndex == 255)
+		{
+			return;
+		}
+
+		//Loop through the triangles
+		int edgeIndex = 0;
+
+		//There are never more than 5 triangles in these meshes
+		for (int i = 0; i < 5; i++)
+		{
+			//There are only 3 vertices in a triangle
+			for (int j = 0; j < 3; j++)
+			{
+				//Get the current indice
+				int indice = TriangleTable[_configurationIndex, edgeIndex];
+
+				//-1 means this triangle table has ended
+				if (indice == -1)
+				{
+					return;
+				}
+
+				//Get the vetices for the start and end of this edge
+				Vector3 vertex1 = _position + EdgeTable[indice, 0];
+				Vector3 vertex2 = _position + EdgeTable[indice, 1];
+
+				//Get the midpoint of this edge
+				Vector3 vertexPosition = (vertex1 + vertex2) / 2;
+
+				//Add to the vertices and triangles lists
+				vertices.Add(vertexPosition);
+				triangles.Add(vertices.Count - 1);
+
+				//Increments edge index
+				edgeIndex++;
+			}
+		}
+	}
+
+	private void ClearMeshData()
+	{
+		//Clear the mesh's data
+		vertices.Clear();
+		triangles.Clear();
+	}
+
+	private void CreateMesh()
+	{
+		//Creates new mesh
+		Mesh mesh = new Mesh();
+		mesh.vertices = vertices.ToArray();
+		mesh.triangles = triangles.ToArray();
+
+		//Recalculates mesh normals
+		mesh.RecalculateNormals();
+
+		//Assign the mesh to the meshfilter
+		meshFilter.mesh = mesh;
+	}
+
 	//Marching cubes tables (DOWNLOADED FROM THE INTERNET)
 	private Vector3Int[] CornerTable = new Vector3Int[8] {
 
@@ -17,7 +115,6 @@ public class MarchingCubes : MonoBehaviour
 		new Vector3Int(0, 1, 1)
 
 	};
-
 	private Vector3[,] EdgeTable = new Vector3[12, 2] {
 
 		{ new Vector3(0.0f, 0.0f, 0.0f), new Vector3(1.0f, 0.0f, 0.0f) },
@@ -34,7 +131,6 @@ public class MarchingCubes : MonoBehaviour
 		{ new Vector3(0.0f, 1.0f, 0.0f), new Vector3(0.0f, 1.0f, 1.0f) }
 
 	};
-
 	private int[,] TriangleTable = new int[,] {
 		
 		//-1 Means its the end of the vertices amount
@@ -294,5 +390,6 @@ public class MarchingCubes : MonoBehaviour
 		{0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 		{0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 		{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
+
 	};
 }
