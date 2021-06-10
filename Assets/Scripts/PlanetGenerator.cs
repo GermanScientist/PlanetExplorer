@@ -7,7 +7,7 @@ using UnityEngine;
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(MeshCollider))]
 
-public class MarchingCubes : MonoBehaviour
+public class PlanetGenerator : MonoBehaviour
 {
 	//Smoothness properties
 	[Header("Terrain smoothness")]
