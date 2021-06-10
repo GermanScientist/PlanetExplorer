@@ -5,41 +5,143 @@ using UnityEngine;
 [ExecuteInEditMode]
 [RequireComponent(typeof(MeshFilter))]
 [RequireComponent(typeof(MeshRenderer))]
+[RequireComponent(typeof(MeshCollider))]
+
 public class MarchingCubes : MonoBehaviour
 {
-	//Properties
-	private MeshFilter meshFilter;
+	//Smoothness properties
+	[Header("Terrain smoothness")]
+	public bool smoothTerrain;
+	public bool flatShaded;
 
+	//Shape properties
+	[Header("Shape")]
+	[Range(0.0001f, 30.0001f)] public float strength = 16f;
+	[Range(0.15f, 4.0001f)] public float roughness = 1.5f;
+	[Range(0.05f, 0.95f)] public float terrainSurface = 0.5f;
+
+	//Mesh properties
+	private MeshFilter meshFilter;
+	private MeshCollider meshCollider;
+
+	//List/array properties
 	private List<Vector3> vertices = new List<Vector3>();
 	private List<int> triangles = new List<int>();
+	private float[,,] terrainMap;
 
-	private int configurationIndex = -1;
+	//Size properties
+	[Header("Width / height")]
+	[Range(8, 64)] public int width = 32;
+	[Range(4, 16)] public int height = 8;
 
+	//Start method gets called at the first frame
 	private void Start()
 	{
-		//Gets the mesh filter component
+		//Initializes nessecary components
 		meshFilter = GetComponent<MeshFilter>();
+		meshCollider = GetComponent<MeshCollider>();
+		transform.tag = "Planet";
+		terrainMap = new float[width + 1, height + 1, width + 1];
+
+		//Populate the terrain
+		PopulateTerrainMap();
+		
+		//Create mesh data
+		CreateMeshData();
 	}
 
+	//Method gets called upon validation
 	private void OnValidate()
 	{
-		//Gets the mesh filter component
+		//Initializes nessecary components
 		meshFilter = GetComponent<MeshFilter>();
+		meshCollider = GetComponent<MeshCollider>();
+		terrainMap = new float[width + 1, height + 1, width + 1];
+
+		//Populate the terrain
+		PopulateTerrainMap();
+
+		//Create mesh data
+		CreateMeshData();
 	}
 
-	private void Update()
+	//Populate the terrainmap
+	private void PopulateTerrainMap()
 	{
-		if (Input.GetKeyDown(KeyCode.Space))
+		//Data points are stored at the corners of the cubes, so the terrainmap needs to be 1 larger than the width/height of the mesh
+		for (int x = 0; x < width + 1; x++)
 		{
-			configurationIndex++;
-			ClearMeshData();
-			MarchCubes(Vector3.zero, configurationIndex);
-			CreateMesh();
+			for (int z = 0; z < width + 1; z++)
+			{
+				for (int y = 0; y < height + 1; y++)
+				{
+					//Get terrain height using perlin noise
+					float currentHeight = (float)height * Mathf.PerlinNoise((float)x / strength * roughness + 0.001f, (float)z / strength * roughness + 0.001f);
+
+					//Populate the terrainmap
+					terrainMap[x, y, z] = (float)y - currentHeight;
+				}
+			}
 		}
 	}
 
-	private void MarchCubes(Vector3 _position, int _configurationIndex)
+	//Sample the terrainmap
+	private float SampleTerrain(Vector3Int point)
 	{
+		return terrainMap[point.x, point.y, point.z];
+	}
+
+	//Convert vertices to indice
+	private int VertexToIndice(Vector3 vertex)
+	{
+		//Loop through all vertices in vertices list
+		for (int i = 0; i < vertices.Count; i++)
+		{
+			//If we find a vertex that matches the arguement, return this index
+			if (vertices[i] == vertex)
+			{
+				return i;
+			}
+		}
+
+		//If there's no match, add the vert to the list and return the last index
+		vertices.Add(vertex);
+		return vertices.Count - 1;
+	}
+
+	//Get the cube configuration
+	private int GetCubeConfiguration(float[] cube)
+	{
+		int configurationIndex = 0;
+
+		//Loop through each point in the cube to check if it's below the terrain surface
+		for (int i = 0; i < 8; i++)
+		{
+			//If it is, through the magic of bits, to set the corresponding bit to 1.
+			if (cube[i] > terrainSurface)
+			{
+				configurationIndex |= 1 << i;
+			}
+		}
+
+		//Return the index of the configuration
+		return configurationIndex;
+	}
+
+	//March through the cubes
+	private void MarchCubes(Vector3Int _position)
+	{
+		//Sample terrain values at each corner of the cube
+		float[] cube = new float[8];
+
+		for (int i = 0; i < 8; i++)
+		{
+			cube[i] = SampleTerrain(_position + CornerTable[i]);
+		}
+
+		//Create configuration index
+		int _configurationIndex = GetCubeConfiguration(cube);
+
 		//If the configuration of the cube is either inside or outside the terrain, don't do anything
 		if (_configurationIndex == 0 || _configurationIndex == 255)
 		{
@@ -65,15 +167,51 @@ public class MarchingCubes : MonoBehaviour
 				}
 
 				//Get the vetices for the start and end of this edge
-				Vector3 vertex1 = _position + EdgeTable[indice, 0];
-				Vector3 vertex2 = _position + EdgeTable[indice, 1];
+				Vector3 vertex1 = _position + CornerTable[EdgeIndice[indice, 0]];
+				Vector3 vertex2 = _position + CornerTable[EdgeIndice[indice, 1]];
 
-				//Get the midpoint of this edge
-				Vector3 vertexPosition = (vertex1 + vertex2) / 2;
+				Vector3 vertexPosition;
 
-				//Add to the vertices and triangles lists
-				vertices.Add(vertexPosition);
-				triangles.Add(vertices.Count - 1);
+				//Changes smoothness depending on boolean
+				if (smoothTerrain)
+				{
+					//Get the terrain values at either end of the current edge from the cube array
+					float vertex1Sample = cube[EdgeIndice[indice, 0]];
+					float vertex2Sample = cube[EdgeIndice[indice, 1]];
+
+					//Calculate the difference between the 2 terrain values
+					float difference = vertex2Sample - vertex1Sample;
+
+					//If the difference is 0, then the terrain passes through the middle
+					if (difference == 0)
+					{
+						difference = terrainSurface;
+					}
+					else
+					{
+						difference = (terrainSurface - vertex1Sample) / difference;
+					}
+
+					//Calculate the point along the edge that the terrain passed through
+					vertexPosition = vertex1 + ((vertex2 - vertex1) * difference);
+				}
+				else
+				{
+					//Get the midpoint of this edge
+					vertexPosition = (vertex1 + vertex2) / 2;
+				}
+
+				//Changes flat shading depending on boolean
+				if (flatShaded)
+				{
+					//Add to the vertices and triangles lists
+					vertices.Add(vertexPosition);
+					triangles.Add(vertices.Count - 1);
+				}
+				else
+				{
+					triangles.Add(VertexToIndice(vertexPosition));
+				}
 
 				//Increments edge index
 				edgeIndex++;
@@ -81,6 +219,30 @@ public class MarchingCubes : MonoBehaviour
 		}
 	}
 
+	//Create the mesh data
+	private void CreateMeshData()
+	{
+		//Clears the mesh data
+		ClearMeshData();
+
+		//Loop through each cube in the terrain
+		for (int x = 0; x < width; x++)
+		{
+			for (int y = 0; y < height; y++)
+			{
+				for (int z = 0; z < width; z++)
+				{
+					//Pass the value into the march cubes function
+					MarchCubes(new Vector3Int(x, y, z));
+				}
+			}
+		}
+
+		//Create the mesh
+		CreateMesh();
+	}
+
+	//Clear the mesh data
 	private void ClearMeshData()
 	{
 		//Clear the mesh's data
@@ -88,6 +250,7 @@ public class MarchingCubes : MonoBehaviour
 		triangles.Clear();
 	}
 
+	//Create the mesh
 	private void CreateMesh()
 	{
 		//Creates new mesh
@@ -100,9 +263,10 @@ public class MarchingCubes : MonoBehaviour
 
 		//Assign the mesh to the meshfilter
 		meshFilter.mesh = mesh;
+		meshCollider.sharedMesh = mesh;
 	}
 
-	//Marching cubes tables (DOWNLOADED FROM THE INTERNET)
+	//Marching cubes corner table
 	private Vector3Int[] CornerTable = new Vector3Int[8] {
 
 		new Vector3Int(0, 0, 0),
@@ -113,24 +277,26 @@ public class MarchingCubes : MonoBehaviour
 		new Vector3Int(1, 0, 1),
 		new Vector3Int(1, 1, 1),
 		new Vector3Int(0, 1, 1)
-
 	};
-	private Vector3[,] EdgeTable = new Vector3[12, 2] {
 
-		{ new Vector3(0.0f, 0.0f, 0.0f), new Vector3(1.0f, 0.0f, 0.0f) },
-		{ new Vector3(1.0f, 0.0f, 0.0f), new Vector3(1.0f, 1.0f, 0.0f) },
-		{ new Vector3(0.0f, 1.0f, 0.0f), new Vector3(1.0f, 1.0f, 0.0f) },
-		{ new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.0f, 1.0f, 0.0f) },
-		{ new Vector3(0.0f, 0.0f, 1.0f), new Vector3(1.0f, 0.0f, 1.0f) },
-		{ new Vector3(1.0f, 0.0f, 1.0f), new Vector3(1.0f, 1.0f, 1.0f) },
-		{ new Vector3(0.0f, 1.0f, 1.0f), new Vector3(1.0f, 1.0f, 1.0f) },
-		{ new Vector3(0.0f, 0.0f, 1.0f), new Vector3(0.0f, 1.0f, 1.0f) },
-		{ new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.0f, 0.0f, 1.0f) },
-		{ new Vector3(1.0f, 0.0f, 0.0f), new Vector3(1.0f, 0.0f, 1.0f) },
-		{ new Vector3(1.0f, 1.0f, 0.0f), new Vector3(1.0f, 1.0f, 1.0f) },
-		{ new Vector3(0.0f, 1.0f, 0.0f), new Vector3(0.0f, 1.0f, 1.0f) }
+	//Marching cubes edge table
+	private int[,] EdgeIndice = new int[12, 2] {
 
+		{ 0, 1 },
+		{ 1, 2 },
+		{ 3, 2 },
+		{ 0, 3 },
+		{ 4, 5 },
+		{ 5, 6 },
+		{ 7, 6 },
+		{ 4, 7 },
+		{ 0, 4 },
+		{ 1, 5 },
+		{ 2, 6 },
+		{ 3, 7 }
 	};
+
+	//Marching cubes triangle table
 	private int[,] TriangleTable = new int[,] {
 		
 		//-1 Means its the end of the vertices amount
@@ -390,6 +556,5 @@ public class MarchingCubes : MonoBehaviour
 		{0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 		{0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 		{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
-
 	};
 }
