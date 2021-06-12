@@ -32,7 +32,8 @@ public class PlanetGenerator : MonoBehaviour
 	//Size properties
 	[Header("Width / height")]
 	[Range(8, 64)] public int width = 32;
-	[Range(4, 16)] public int height = 8;
+	[Range(4, 64)] public int height = 8;
+	public int radius = 15;
 
 	//Start method gets called at the first frame
 	private void Start()
@@ -75,11 +76,11 @@ public class PlanetGenerator : MonoBehaviour
 			{
 				for (int y = 0; y < height + 1; y++)
 				{
-					//Get terrain height using perlin noise
-					float currentHeight = (float)height * Mathf.PerlinNoise((float)x / strength * roughness + 0.001f, (float)z / strength * roughness + 0.001f);
-
-					//Populate the terrainmap
-					terrainMap[x, y, z] = (float)y - currentHeight;
+					var v = new Vector3(x - radius, y - radius, z - radius);
+					if (v.sqrMagnitude > (radius * radius))
+					{
+						terrainMap[x, y, z] = (x+x) + (y*y) + (z*z);
+					}
 				}
 			}
 		}
