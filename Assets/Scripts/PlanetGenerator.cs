@@ -18,7 +18,7 @@ public class PlanetGenerator : MonoBehaviour
 	[Header("Shape")]
 	[Range(0.0001f, 30.0001f)] public float strength = 16f;
 	[Range(0.15f, 4.0001f)] public float roughness = 1.5f;
-	[Range(0.05f, 0.95f)] public float terrainSurface = 0.5f;
+	[Range(0.00f, 0.95f)] public float terrainSurface = 0.5f;
 
 	//Mesh properties
 	private MeshFilter meshFilter;
@@ -31,8 +31,6 @@ public class PlanetGenerator : MonoBehaviour
 
 	//Size properties
 	[Header("Width / height")]
-	[Range(8, 64)] public int width = 32;
-	[Range(4, 64)] public int height = 8;
 	public int radius = 15;
 
 	//Start method gets called at the first frame
@@ -42,7 +40,7 @@ public class PlanetGenerator : MonoBehaviour
 		meshFilter = GetComponent<MeshFilter>();
 		meshCollider = GetComponent<MeshCollider>();
 		transform.tag = "Planet";
-		terrainMap = new float[width + 1, height + 1, width + 1];
+		terrainMap = new float[radius + 1, radius + 1, radius + 1];
 
 		//Populate the terrain
 		PopulateTerrainMap();
@@ -57,7 +55,7 @@ public class PlanetGenerator : MonoBehaviour
 		//Initializes nessecary components
 		meshFilter = GetComponent<MeshFilter>();
 		meshCollider = GetComponent<MeshCollider>();
-		terrainMap = new float[width + 1, height + 1, width + 1];
+		terrainMap = new float[radius + 1, radius + 1, radius + 1];
 
 		//Populate the terrain
 		PopulateTerrainMap();
@@ -70,17 +68,14 @@ public class PlanetGenerator : MonoBehaviour
 	private void PopulateTerrainMap()
 	{
 		//Data points are stored at the corners of the cubes, so the terrainmap needs to be 1 larger than the width/height of the mesh
-		for (int x = 0; x < width + 1; x++)
+		for (int x = 0; x < radius + 1; x++)
 		{
-			for (int z = 0; z < width + 1; z++)
+			for (int z = 0; z < radius + 1; z++)
 			{
-				for (int y = 0; y < height + 1; y++)
+				for (int y = 0; y < radius + 1; y++)
 				{
-					var v = new Vector3(x - radius, y - radius, z - radius);
-					if (v.sqrMagnitude > (radius * radius))
-					{
-						terrainMap[x, y, z] = (x+x) + (y*y) + (z*z);
-					}
+					//Populate the terrainmap
+					terrainMap[x, y, z] = Vector3.Distance(new Vector3(x, y, z), transform.position) - radius;
 				}
 			}
 		}
@@ -227,11 +222,11 @@ public class PlanetGenerator : MonoBehaviour
 		ClearMeshData();
 
 		//Loop through each cube in the terrain
-		for (int x = 0; x < width; x++)
+		for (int x = 0; x < radius; x++)
 		{
-			for (int y = 0; y < height; y++)
+			for (int y = 0; y < radius; y++)
 			{
-				for (int z = 0; z < width; z++)
+				for (int z = 0; z < radius; z++)
 				{
 					//Pass the value into the march cubes function
 					MarchCubes(new Vector3Int(x, y, z));
