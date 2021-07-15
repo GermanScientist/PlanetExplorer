@@ -12,6 +12,8 @@ public class Planet : MonoBehaviour {
     public float size = 30; //Must be same size as set in inspector
 
     public Transform player;
+    [HideInInspector] public float distanceToPlayer;
+    public float cullingMinAngle = 1.45f;
 
     //Hardcoded detail leves, the first value is the level of detail, the second value is the distance from the player
     public Dictionary<int, float> lodDistances = new Dictionary<int, float>() {
@@ -26,10 +28,16 @@ public class Planet : MonoBehaviour {
         {8, 0.1f}
     };
 
-    //Update at the start 
-    private void Start(){
-        player = GameObject.FindGameObjectWithTag("Player").transform;
-        
+    //Gets called before start
+    private void Awake()
+    {
+        player = GameObject.FindGameObjectWithTag("Player").transform; // Slow, but that doesn't really matter in this case
+        distanceToPlayer = Vector3.Distance(transform.position, player.position);
+    }
+
+    //Gets called at the first frame 
+    private void Start()
+    {
         InitializePlanet();
         CreateMesh();
 
@@ -44,6 +52,13 @@ public class Planet : MonoBehaviour {
         CreateMesh();
 
         StartCoroutine(PlanetGenerationLoop());
+        distanceToPlayer = Vector3.Distance(transform.position, player.position);
+    }
+
+    //Gets called every frame
+    private void Update()
+    {
+        distanceToPlayer = Vector3.Distance(transform.position, player.position);
     }
 
     //Regenerate the mesh every second
@@ -51,7 +66,7 @@ public class Planet : MonoBehaviour {
     {
         while(true) {
             yield return new WaitForSeconds(1.0f);
-            CreateMesh();
+            UpdateMesh();
         }
     }
 
@@ -95,8 +110,15 @@ public class Planet : MonoBehaviour {
     //Create the mesh of the planet
     private void CreateMesh() {
         //Loop through all the planet faces
-        foreach(PlanetFace planetFace in planetFaces) {
+        foreach(PlanetFace planetFace in planetFaces)
             planetFace.CreateQuadTree();
-        }
+    }
+
+    //Update the mesh of the planet
+    private void UpdateMesh()
+    {
+        //Loop through all the planet faces
+        foreach (PlanetFace planetFace in planetFaces)
+            planetFace.UpdateQuadTree();
     }
 }

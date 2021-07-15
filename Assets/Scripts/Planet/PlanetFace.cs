@@ -18,6 +18,8 @@ public class PlanetFace {
     public List<Vector3> vertices = new List<Vector3>();
     public List<int> triangles = new List<int>();
 
+    private Chunk parentChunk;
+
     //The constructor
     public PlanetFace(Mesh _mesh, int _resolution, Vector3 _localUp, float _radius, Planet _planet)
     {
@@ -40,7 +42,7 @@ public class PlanetFace {
         triangles.Clear();
 
         //Create the parent chunk and it's children
-        Chunk parentChunk = new Chunk(planet, null, null, localUp.normalized * planet.size, radius, 0, localUp, axisOne, axisTwo, resolution);
+        parentChunk = new Chunk(planet, null, null, localUp.normalized * planet.size, radius, 0, localUp, axisOne, axisTwo, resolution);
         parentChunk.CreateChildren();
 
         //Get chunk mesh data
@@ -57,76 +59,43 @@ public class PlanetFace {
         mesh.vertices = vertices.ToArray();
         mesh.triangles = triangles.ToArray();
         mesh.RecalculateNormals();
-
     }
 
-    /*
-    //Create the mesh
-    public void CreateMesh()
+    //Update the quadtree
+    public void UpdateQuadTree()
     {
-        //The resolution is N of vertices along a single edge, so the total resolution is resolution^2
-        Vector3[] vertices = new Vector3[resolution * resolution];
+        //Reset the mesh
+        vertices.Clear();
+        triangles.Clear();
 
-        //Calculate how many triangles there will be in the mesh
-        //The amount of faces is (resolution-1)^2, since there is 1 face less than vertices and there are 2 axis
-        //Each face consists of 2 triangles, so the amount of triangles is (resolution-1)^2 * 2
-        //Each triangle consists of 3 vertices which means the amount of vertices is (resolution-1)^2 * 2 * 3
-        int[] triangles = new int[(resolution - 1) * (resolution - 1) * 2 * 3];
+        //Create the parent chunk and it's children
+        parentChunk.UpdateChunk();
 
-        //Store the indices
-        int index = 0;
-        int triangleIndex = 0;
-
-        for (int y = 0; y < resolution; y++) {
-            for (int x = 0; x < resolution; x++) {
-                //Calculates the percentage of how close to completage the loop is,
-                //which we can use to calculate where the vertex should be
-                Vector2 percent = new Vector2(x, y) / (resolution - 1);
-
-                //Use the percentage to figure out where the vertex needs to be on the cube
-                Vector3 vertexOnCube = localUp + (percent.x - 0.5f) * 2 * axisOne + (percent.y - 0.5f) * 2 * axisTwo;
-
-                //To turn the cube into a sphere, we want to inflate it by making every vertex the same distance away from the center
-                Vector3 vertexOnSphere = vertexOnCube.normalized;
-
-                //Set the current vertex to the newly calculated vertex position
-                vertices[index] = vertexOnSphere;
-
-                //Create triangle, aslong as the current vertex isn't along the right or bottom edge
-                //in other words, as long as x isn't equal to r-1 and y isn't equal to r-1
-                if(x != resolution - 1 && y != resolution - 1)
-                {
-                    //Update the first triangle
-                    triangles[triangleIndex] = index; //The first vertex of the triangle is equal to the current vertex
-                    triangles[triangleIndex + 1] = index + resolution + 1; //The second vertex of the triangle is equal to the current vertex + r + 1
-                    triangles[triangleIndex + 2] = index + resolution; //The third vertex of the triangle is equal to the current vertex + r
-
-                    //Update the second triangle
-                    triangles[triangleIndex + 3] = index; //The first vertex of the triangle is equal to the current vertex
-                    triangles[triangleIndex + 4] = index + 1; //The second vertex of the triangle is equal to the current vertex + 1
-                    triangles[triangleIndex + 5] = index + resolution + 1; //The third vertex of the triangle is equal to the current vertex + r + 1
-
-                    //Since we added 2 triangles, aka 6 vertices, we increment the triangle index by 6
-                    triangleIndex += 6;
-                }
-
-                //Increment the index
-                index++;
-
+        //Get chunk mesh data
+        int triangleOffset = 0;
+        foreach (Chunk child in parentChunk.GetVisibleChildren())
+        {
+            (Vector3[], int[]) verticesAndTriangles = (new Vector3[0], new int[0]);
+            if(child.vertices == null || child.vertices.Length == 0)
+            {
+                verticesAndTriangles = child.CalculateVerticesAndTriangles(triangleOffset);
             }
+            else 
+            {
+                verticesAndTriangles = (child.vertices, child.GetTrianglesWithOffset(triangleOffset));
+            }
+
+            vertices.AddRange(verticesAndTriangles.Item1);
+            triangles.AddRange(verticesAndTriangles.Item2);
+            triangleOffset += verticesAndTriangles.Item1.Length;
         }
 
-        //Clear the mesh data
+        //Reset the mesh and add new data
         mesh.Clear();
-
-        //Assign the newly calculated vertices to the mesh
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
-
-        //Recalculte the normals of the mesh
+        mesh.vertices = vertices.ToArray();
+        mesh.triangles = triangles.ToArray();
         mesh.RecalculateNormals();
     }
-    */
 }
 
 //The chunk class will generate each chunk of the planet
@@ -141,6 +110,9 @@ public class Chunk {
     public Vector3 axisTwo;
     public int resolution;
     public Planet planet;
+    
+    public Vector3[] vertices;
+    public int[] triangles;
 
     //The constructor
     public Chunk(Planet _planet, Chunk[] _children, Chunk _parent, Vector3 _position, float _radius, int _lod, Vector3 _localUp, Vector3 _axisOne, Vector3 _axisTwo, int _resolution)
@@ -180,12 +152,10 @@ public class Chunk {
     public Chunk[] GetVisibleChildren() {
         List<Chunk> toBeRendered = new List<Chunk>();
 
-        //If there are any children add all the visible children to the list, otherwise only add this chunk to the list
-        if(children.Length > 0)
-            foreach (Chunk child in children)
-                toBeRendered.AddRange(child.GetVisibleChildren());
-        else
-            toBeRendered.Add(this);
+        //Calculate which chunk should be rendered
+        if (Mathf.Acos((Mathf.Pow(planet.size, 2) + Mathf.Pow(planet.distanceToPlayer, 2) - Mathf.Pow(Vector3.Distance(planet.transform.TransformDirection(position.normalized * planet.size), 
+            planet.player.position), 2)) / (2 * planet.size * planet.distanceToPlayer)) < planet.cullingMinAngle) 
+                toBeRendered.Add(this);
 
         //Return the array of all the chunks that need to be rendered
         return toBeRendered.ToArray();
@@ -248,6 +218,45 @@ public class Chunk {
             }
         }
 
-        return (vertices, triangles);
+        this.vertices = vertices;
+        this.triangles = triangles;
+
+        return (vertices, GetTrianglesWithOffset(_triangleOffset));
+    }
+
+    //Update the chunk
+    public void UpdateChunk()
+    {
+        float distanceToPlayer = Vector3.Distance(planet.transform.TransformDirection(position.normalized * planet.size), planet.player.position);
+
+        if(lod <= 8)
+        {
+            if(distanceToPlayer > planet.lodDistances[lod])
+            {
+                children = new Chunk[0];
+            }
+            else
+            {
+                if(children.Length > 0)
+                    foreach (Chunk child in children)
+                        child.UpdateChunk();
+                else
+                    CreateChildren();
+            }
+        }
+    }
+
+    //Return the triangles with offset
+    public int[] GetTrianglesWithOffset(int _triangleOffset)
+    {
+        //Store a local triangle variable
+        int[] triangles = new int[this.triangles.Length];
+
+        //Calculate the triangles with the offset
+        for(int  i = 0; i < triangles.Length; i++)
+            triangles[i] = this.triangles[i] + _triangleOffset;
+
+        //Return the new triangles
+        return triangles;
     }
 }
