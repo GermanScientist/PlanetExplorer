@@ -9,10 +9,50 @@ public class Planet : MonoBehaviour {
 
     [Range(2, 256)] public int resolution = 32;
 
-    //Update on validation, so it updates in the editor
-    private void OnValidate() {
+    public float size = 30; //Must be same size as set in inspector
+
+    public Transform player;
+
+    //Hardcoded detail leves, the first value is the level of detail, the second value is the distance from the player
+    public Dictionary<int, float> lodDistances = new Dictionary<int, float>() {
+        {0, Mathf.Infinity},
+        {1, 60.0f},
+        {2, 25.0f},
+        {3, 10.0f},
+        {4, 4.0f},
+        {5, 1.5f},
+        {6, 0.7f},
+        {7, 0.3f},
+        {8, 0.1f}
+    };
+
+    //Update at the start 
+    private void Start(){
+        player = GameObject.FindGameObjectWithTag("Player").transform;
+        
         InitializePlanet();
         CreateMesh();
+
+        StartCoroutine(PlanetGenerationLoop());
+    }
+
+    //Update on validation, so it updates in the editor
+    private void OnValidate() {
+        player = GameObject.FindGameObjectWithTag("Player").transform;
+
+        InitializePlanet();
+        CreateMesh();
+
+        StartCoroutine(PlanetGenerationLoop());
+    }
+
+    //Regenerate the mesh every second
+    private IEnumerator PlanetGenerationLoop()
+    {
+        while(true) {
+            yield return new WaitForSeconds(1.0f);
+            CreateMesh();
+        }
     }
 
     //Initialize the planet
@@ -48,7 +88,7 @@ public class Planet : MonoBehaviour {
             }
 
             //Create the face of a planet, passing in the shared mesh of the mesh filter, the resolution and the direction depending on the index
-            planetFaces[i] = new PlanetFace(meshFilters[i].sharedMesh, resolution, directions[i]);
+            planetFaces[i] = new PlanetFace(meshFilters[i].sharedMesh, resolution, directions[i], size, this);
         }
     }
 
@@ -56,7 +96,7 @@ public class Planet : MonoBehaviour {
     private void CreateMesh() {
         //Loop through all the planet faces
         foreach(PlanetFace planetFace in planetFaces) {
-            planetFace.CreateMesh();
+            planetFace.CreateQuadTree();
         }
     }
 }
